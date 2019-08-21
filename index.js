@@ -24,7 +24,7 @@ const users = [
 ];
 //////////////
 const jwtOptions = {
-    jwtFromRequest: ExtractJwt.fromAuthHeader(),
+    jwtFromRequest: ExtractJwt.fromAuthHeaderWithScheme('jwt'),
     secretOrKey: 'taiwanNo1'
 };
 
