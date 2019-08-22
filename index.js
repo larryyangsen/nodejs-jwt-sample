@@ -1,66 +1,90 @@
-const _ = require('lodash');
 const express = require('express');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
-
-const passport = require('passport');
-const passportJWT = require('passport-jwt');
-
-const ExtractJwt = passportJWT.ExtractJwt;
-const JwtStrategy = passportJWT.Strategy;
-
-//fake datas//////
+const bcrypt = require('bcrypt');
+const app = express();
+const saltRounds = 10;
+const secretKey = 'TaiwanNo1';
 const users = [
     {
         id: 1,
         name: 'user1',
-        password: '%2yx4'
+        password: bcrypt.hashSync('12345', saltRounds),
+        posts: [
+            {
+                id: 1,
+                title: 'Hello , how are you ?',
+                author: 'Ark',
+                time: '2019-08-08T02:19:56.196Z'
+            },
+            {
+                id: 2,
+                title: "I'm fine, thank you, and you ?",
+                author: 'Bibby',
+                time: '2019-08-08T02:20:06.096Z'
+            },
+            {
+                id: 3,
+                title: "How's the weather like ?",
+                author: 'C.C',
+                time: '2019-08-08T02:21:06.996Z'
+            }
+        ]
     },
     {
         id: 2,
-        name: 'test',
-        password: 'test'
+        name: 'user2',
+        password: bcrypt.hashSync('12345', saltRounds),
+        posts: [
+            {
+                id: 1,
+                title: 'Hello , how are you ?',
+                author: 'Ark',
+                time: '2019-08-08T02:19:56.196Z'
+            },
+            {
+                id: 2,
+                title: "I'm fine, thank you, and you ?",
+                author: 'Bibby',
+                time: '2019-08-08T02:20:06.096Z'
+            },
+            {
+                id: 3,
+                title: "How's the weather like ?",
+                author: 'C.C',
+                time: '2019-08-08T02:21:06.996Z'
+            }
+        ]
     }
 ];
-//////////////
-const jwtOptions = {
-    jwtFromRequest: ExtractJwt.fromAuthHeaderWithScheme('jwt'),
-    secretOrKey: 'taiwanNo1'
-};
 
-const strategy = new JwtStrategy(jwtOptions, (jwt_payload, next) => {
-    console.log('payload received', jwt_payload);
-    //usually this would be a database call:
-    const user = users[_.findIndex(users, { id: jwt_payload.id })];
-    if (user) {
-        next(null, user);
-    } else {
-        next(null, false);
+const validateUser = (req, res, next) => {
+    try {
+        const [, token] = req.get('Authorization').split(' ');
+        console.log(token);
+
+        const user = jwt.verify(token, secretKey);
+        console.log(user);
+        req.body.userId = user.id;
+        next();
+    } catch (e) {
+        res.status(404).send(e.message);
     }
-});
-
-passport.use(strategy);
-
-const app = express();
-app.use(passport.initialize());
-
-//parse application/x-www-form-urlencoded
-//for easier testing with Postman or plain HTML forms
-
-app.use(
-    bodyParser.urlencoded({
-        extended: true
-    })
-);
-
-//parse application/json
-
+};
+const getUserPosts = (req, res, next) => {
+    try {
+        const { userId } = req.body;
+        const { posts } = users.find(user => user.id === userId);
+        req.body.posts = posts;
+        next();
+    } catch (e) {
+        res.status(404).send(e.message);
+    }
+};
 app.use(bodyParser.json());
-
 app.get('/', (req, res) => {
-    res.json({ message: 'Express is up!' });
+    res.send('Express Running');
 });
-
 app.post('/login', (req, res) => {
     const { account, password } = req.body;
     if (!account || !password) {
@@ -68,33 +92,43 @@ app.post('/login', (req, res) => {
         return;
     }
     //usually this would be a database call:
-    const user = users[_.findIndex(users, { name: account })];
+    const user = users.find(user => user.name === account);
     if (!user) {
         res.status(401).json({ message: 'no such user found' });
         return;
     }
-    if (user.password === req.body.password) {
-        //from now on we'll identify the user by the id and the id is the only personalized value that goes into our token
-        const payload = { id: user.id };
-        const token = jwt.sign(payload, jwtOptions.secretOrKey);
-        res.json({ message: 'ok', token: token });
-    } else {
-        res.status(401).json({ message: 'passwords did not match' });
+    if (bcrypt.compareSync(password, user.password)) {
+        const token = jwt.sign({ id: user.id }, secretKey, {
+            expiresIn: '12h'
+        });
+        res.json({ status: 'success', token, userId: user.id });
         return;
+    }
+    res.status(401).json({ message: 'passwords did not match' });
+    return;
+});
+
+app.get('/posts', validateUser, getUserPosts, (req, res) => {
+    const { posts } = req.body;
+    res.json(posts);
+});
+
+app.post('/posts', validateUser, getUserPosts, (req, res) => {
+    try {
+        const { posts, author, title } = req.body;
+        const post = {
+            id: posts.length,
+            author,
+            title,
+            time: new Date()
+        };
+        posts.push(post);
+        res.json(post);
+    } catch (e) {
+        res.status(404).send(e.message);
     }
 });
 
-app.get(
-    '/secret',
-    passport.authenticate('jwt', {
-        session: false
-    }),
-    (req, res) => {
-        console.log(req.get('Authorization'));
-        res.json('Success! You can not see this without a token');
-    }
-);
-
-app.listen(3000, () => {
-    console.log('ready');
+app.listen(3000, err => {
+    console.log('listen on ', 3000);
 });
