@@ -10,61 +10,41 @@ const users = [
         id: 1,
         name: 'user1',
         password: bcrypt.hashSync('12345', saltRounds),
-        posts: [
-            {
-                id: 1,
-                title: 'Hello , how are you ?',
-                author: 'Ark',
-                time: '2019-08-08T02:19:56.196Z'
-            },
-            {
-                id: 2,
-                title: "I'm fine, thank you, and you ?",
-                author: 'Bibby',
-                time: '2019-08-08T02:20:06.096Z'
-            },
-            {
-                id: 3,
-                title: "How's the weather like ?",
-                author: 'C.C',
-                time: '2019-08-08T02:21:06.996Z'
-            }
-        ]
+        posts: [1]
     },
     {
         id: 2,
         name: 'user2',
         password: bcrypt.hashSync('12345', saltRounds),
-        posts: [
-            {
-                id: 1,
-                title: 'Hello , how are you ?',
-                author: 'Ark',
-                time: '2019-08-08T02:19:56.196Z'
-            },
-            {
-                id: 2,
-                title: "I'm fine, thank you, and you ?",
-                author: 'Bibby',
-                time: '2019-08-08T02:20:06.096Z'
-            },
-            {
-                id: 3,
-                title: "How's the weather like ?",
-                author: 'C.C',
-                time: '2019-08-08T02:21:06.996Z'
-            }
-        ]
+        posts: [2, 3]
+    }
+];
+
+const posts = [
+    {
+        id: 1,
+        title: 'Hello , how are you ?',
+        author: 'user1',
+        time: '2019-08-08T02:19:56.196Z'
+    },
+    {
+        id: 2,
+        title: "I'm fine, thank you, and you ?",
+        author: 'user2',
+        time: '2019-08-08T02:20:06.096Z'
+    },
+    {
+        id: 3,
+        title: "How's the weather like ?",
+        author: 'user2',
+        time: '2019-08-08T02:21:06.996Z'
     }
 ];
 
 const validateUser = (req, res, next) => {
     try {
         const [, token] = req.get('Authorization').split(' ');
-        console.log(token);
-
         const user = jwt.verify(token, secretKey);
-        console.log(user);
         req.body.userId = user.id;
         next();
     } catch (e) {
@@ -74,17 +54,40 @@ const validateUser = (req, res, next) => {
 const getUserPosts = (req, res, next) => {
     try {
         const { userId } = req.body;
-        const { posts } = users.find(user => user.id === userId);
-        req.body.posts = posts;
+        const { posts: userPosts } = users.find(user => user.id === userId);
+        req.body.userPosts = posts.filter(
+            post => userPosts.indexOf(post.id) !== -1
+        );
         next();
     } catch (e) {
         res.status(404).send(e.message);
     }
 };
+
+const checkUserPost = (req, res, next) => {
+    try {
+        const { userPosts } = req.body;
+        let { id } = req.params;
+        id = parseInt(id);
+
+        if (!userPosts.filter(post => post.id === id).length) {
+            res.status(404).send(`${id} is not yours`);
+            return;
+        }
+        const post = posts.find(post => post.id === id);
+        req.body.userPost = post;
+        next();
+    } catch (e) {
+        res.status(404).send(e.message);
+    }
+};
+
 app.use(bodyParser.json());
+
 app.get('/', (req, res) => {
     res.send('Express Running');
 });
+
 app.post('/login', (req, res) => {
     const { account, password } = req.body;
     if (!account || !password) {
@@ -108,26 +111,80 @@ app.post('/login', (req, res) => {
     return;
 });
 
+app.get('/checkLogin', validateUser, (req, res) => {
+    const { userId } = req.body;
+    if (!userId) {
+        res.status(404).send('not login');
+        return;
+    }
+    res.status(200).send('ok');
+});
+
 app.get('/posts', validateUser, getUserPosts, (req, res) => {
-    const { posts } = req.body;
-    res.json(posts);
+    const { userPosts } = req.body;
+    res.json(userPosts);
+});
+
+app.get('/posts/:id', validateUser, getUserPosts, checkUserPost, (req, res) => {
+    try {
+        const { userPost } = req.body;
+
+        res.json(userPost);
+    } catch (e) {
+        console.log(e);
+        res.status(404).send(e.message);
+    }
 });
 
 app.post('/posts', validateUser, getUserPosts, (req, res) => {
     try {
-        const { posts, author, title } = req.body;
+        const { userPosts, author, title } = req.body;
         const post = {
             id: posts.length,
             author,
             title,
             time: new Date()
         };
-        posts.push(post);
+        userPosts.push(post.id);
         res.json(post);
     } catch (e) {
         res.status(404).send(e.message);
     }
 });
+
+app.put('/posts/:id', validateUser, getUserPosts, checkUserPost, (req, res) => {
+    try {
+        const { userPost, title } = req.body;
+        userPost.title = title;
+        const index = posts.findIndex(post => post.id === userPost.id);
+        posts[index] = userPost;
+        console.log(posts);
+        res.json(userPost);
+    } catch (e) {
+        res.status(404).send(e.message);
+    }
+});
+
+app.delete(
+    '/posts/:id',
+    validateUser,
+    getUserPosts,
+    checkUserPost,
+    (req, res) => {
+        try {
+            const { userPost, userPosts } = req.body;
+            const index = posts.findIndex(post => post.id === userPost.id);
+            const uIndex = userPosts.findIndex(post => post.id === userPost.id);
+            posts.splice(index, 1);
+            userPosts.splice(uIndex, 1);
+            console.log(posts);
+            console.log(userPosts);
+            res.json(userPosts);
+        } catch (e) {
+            res.status(404).send(e.message);
+        }
+    }
+);
 
 app.listen(3000, err => {
     console.log('listen on ', 3000);
